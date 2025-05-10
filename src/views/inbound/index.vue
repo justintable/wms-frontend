@@ -56,24 +56,45 @@
         <div class="product-list">
           <div v-for="(item, index) in form.products" :key="index" class="product-item">
             <el-row :gutter="20">
-              <el-col :span="8">
+              <el-col :span="6">
                 <el-form-item label="商品">
-                  <el-select v-model="item.product" placeholder="选择商品">
-                    <el-option label="测试商品1" value="P001" />
+                  <el-select
+                    v-model="item.product"
+                    placeholder="选择商品"
+                    style="width: 100%;"
+                    @change="val => handleProductChange(val, item)"
+                  >
+                    <el-option
+                      v-for="prod in productOptions"
+                      :key="prod.code"
+                      :label="prod.name"
+                      :value="prod.code"
+                    />
                   </el-select>
                 </el-form-item>
               </el-col>
-              <el-col :span="6">
+              <el-col :span="8">
                 <el-form-item label="数量">
-                  <el-input-number v-model="item.quantity" :min="1" />
+                  <el-input-number
+                    v-model="item.quantity"
+                    :min="1"
+                    :step="1"
+                    style="width: 320px;"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="单价">
+                  <el-input-number
+                    v-model="item.price"
+                    :precision="2"
+                    :step="0.1"
+                    :min="0"
+                    style="width: 320px;"
+                  />
                 </el-form-item>
               </el-col>
               <el-col :span="6">
-                <el-form-item label="单价">
-                  <el-input-number v-model="item.price" :precision="2" :step="0.1" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="4">
                 <el-button type="danger" @click="removeProduct(index)">删除</el-button>
               </el-col>
             </el-row>
@@ -92,8 +113,9 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import axios from 'axios'
 
 // 表格数据
 const tableData = ref([
@@ -153,10 +175,54 @@ const handleConfirm = (row) => {
 }
 
 // 提交表单
-const handleSubmit = () => {
-  // 这里添加提交逻辑
-  ElMessage.success('新增入库单成功')
-  dialogVisible.value = false
+const handleSubmit = async () => {
+  // 提交前将商品明细的price和quantity转为数字类型
+  const products = form.products.map(item => ({
+    ...item,
+    price: Number(item.price),
+    quantity: Number(item.quantity)
+  }))
+  const inboundData = {
+    code: 'IN' + Date.now(),
+    date: new Date().toISOString().slice(0, 10),
+    type: form.type,
+    supplier: form.supplier,
+    status: '待入库',
+    remark: form.remark,
+    products
+  }
+  try {
+    await axios.post('http://localhost:3001/api/inbounds', inboundData)
+    ElMessage.success('新增入库单成功')
+    dialogVisible.value = false
+    // 新增后立即刷新表格
+    await fetchInbounds()
+  } catch (err) {
+    ElMessage.error('新增失败: ' + (err.response?.data?.error || err.message))
+  }
+}
+
+const fetchInbounds = async () => {
+  const { data } = await axios.get('http://localhost:3001/api/inbounds')
+  tableData.value = data
+}
+
+const productOptions = ref([])
+const fetchProducts = async () => {
+  const { data } = await axios.get('http://localhost:3001/api/products')
+  productOptions.value = data
+}
+
+// 页面加载时自动获取
+onMounted(fetchInbounds)
+onMounted(fetchProducts)
+
+const handleProductChange = (code, item) => {
+  const prod = productOptions.value.find(p => p.code === code)
+  if (prod) {
+    item.price = prod.price || 0 // 自动带出商品价格
+    // 你也可以带出单位、规格等
+  }
 }
 </script>
 
